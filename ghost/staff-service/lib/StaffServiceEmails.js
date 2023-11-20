@@ -420,7 +420,7 @@ class StaffServiceEmails {
     }
 
     get fromEmailAddress() {
-        return `ghost@${this.defaultEmailDomain}`;
+        return `noreply@${this.defaultEmailDomain}`;
     }
 
     extractInitials(name = '') {
