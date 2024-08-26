@@ -329,13 +329,14 @@ module.exports = class MailgunClient {
     }
 
     /**
-     * Returns the configurated delay between batches in milliseconds
+     * Returns the configured target delivery window in seconds
+     * Ghost will attempt to deliver emails evenly distributed over this window
      * 
      * Defaults to 0 (no delay) if not set
      * 
      * @returns {number}
      */
-    getBatchDelay() {
-        return this.#config.get('bulkEmail')?.batchDelay ?? 0;
+    getTargetDeliveryWindow() {
+        return this.#config.get('bulkEmail')?.targetDeliveryWindow ?? 0;
     }
 };

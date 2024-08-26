@@ -247,22 +247,22 @@ describe('Mailgun Email Provider', function () {
         });
     });
 
-    describe('getBatchDelay', function () {
+    describe('getTargetDeliveryWindow', function () {
         let mailgunClient;
-        let getBatchDelayStub;
+        let getTargetDeliveryWindowStub;
 
-        it('returns 1000', function () {
-            getBatchDelayStub = sinon.stub().returns(0);
+        it('returns the configured target delivery window', function () {
+            getTargetDeliveryWindowStub = sinon.stub().returns(0);
 
             mailgunClient = {
-                getBatchDelay: getBatchDelayStub
+                getTargetDeliveryWindow: getTargetDeliveryWindowStub
             };
             
             const provider = new MailgunEmailProvider({
                 mailgunClient,
                 errorHandler: () => {}
             });
-            assert.equal(provider.getBatchDelay(), 0);
+            assert.equal(provider.getTargetDeliveryWindow(), 0);
         });
     });
 });

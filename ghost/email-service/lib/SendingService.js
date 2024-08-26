@@ -15,6 +15,7 @@ const logging = require('@tryghost/logging');
  * @typedef {object} IEmailProviderService
  * @prop {(emailData: EmailData, options: EmailSendingOptions) => Promise<EmailProviderSuccessResponse>} send
  * @prop {() => number} getMaximumRecipients
+ * @prop {() => number} getTargetDeliveryWindow
  *
  * @typedef {object} Post
  * @typedef {object} Newsletter
@@ -77,12 +78,12 @@ class SendingService {
     }
 
     /**
-     * Returns the configured delay between batches in milliseconds
+     * Returns the configured target delivery window in seconds
      * 
      * @returns {number}
      */
-    getBatchDelay() {
-        return this.#emailProvider.getBatchDelay();
+    getTargetDeliveryWindow() {
+        return this.#emailProvider.getTargetDeliveryWindow();
     }
 
     /**

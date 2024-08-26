@@ -357,7 +357,9 @@ class BatchSendingService {
     async sendBatches({email, batches, post, newsletter}) {
         logging.info(`Sending ${batches.length} batches for email ${email.id}`);
 
-        const BATCH_DELAY = this.#sendingService.getBatchDelay(); // delay between batches in milliseconds
+        // Ghost will attempt to deliver emails evenly distributed over this window, specified in seconds
+        const TARGET_DELIVERY_WINDOW = this.#sendingService.getTargetDeliveryWindow();
+        const BATCH_DELAY = TARGET_DELIVERY_WINDOW > 0 ? TARGET_DELIVERY_WINDOW / batches.length : 0;
 
         // Reuse same HTML body if we send an email to the same segment
         const emailBodyCache = new EmailBodyCache();

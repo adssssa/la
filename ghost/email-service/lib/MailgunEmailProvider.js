@@ -183,8 +183,8 @@ class MailgunEmailProvider {
      * 
      * @returns {number}
      */
-    getBatchDelay() {
-        return this.#mailgunClient.getBatchDelay();
+    getTargetDeliveryWindow() {
+        return this.#mailgunClient.getTargetDeliveryWindow();
     }
 }
 

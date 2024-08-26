@@ -58,7 +58,7 @@ describe('MailgunClient', function () {
         assert(typeof mailgunClient.getBatchSize() === 'number');
     });
 
-    it('exports a number for configurable batch delay', function () {
+    it('exports a number for configurable target delivery window', function () {
         const configStub = sinon.stub(config, 'get');
         configStub.withArgs('bulkEmail').returns({
             mailgun: {
@@ -67,11 +67,26 @@ describe('MailgunClient', function () {
                 baseUrl: 'https://api.mailgun.net/v3'
             },
             batchSize: 1000,
-            batchDelay: 1000
+            targetDeliveryWindow: 300
         });
 
         const mailgunClient = new MailgunClient({config, settings});
-        assert(typeof mailgunClient.getBatchDelay() === 'number');
+        assert.equal(mailgunClient.getTargetDeliveryWindow(), 300);
+    });
+
+    it('exports a number — 0 — for configurable target delivery window if not set', function () {
+        const configStub = sinon.stub(config, 'get');
+        configStub.withArgs('bulkEmail').returns({
+            mailgun: {
+                apiKey: 'apiKey',
+                domain: 'domain.com',
+                baseUrl: 'https://api.mailgun.net/v3'
+            },
+            batchSize: 1000
+        });
+
+        const mailgunClient = new MailgunClient({config, settings});
+        assert.equal(mailgunClient.getTargetDeliveryWindow(), 0);
     });
 
     it('can connect via config', function () {

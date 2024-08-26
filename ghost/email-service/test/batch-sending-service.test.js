@@ -683,7 +683,7 @@ describe('Batch Sending Service', function () {
         it('Works for a single batch', async function () {
             const service = new BatchSendingService({
                 sendingService: {
-                    getBatchDelay() {
+                    getTargetDeliveryWindow() {
                         return 0;
                     }
                 }
@@ -708,7 +708,7 @@ describe('Batch Sending Service', function () {
         it('Works for more than 2 batches', async function () {
             const service = new BatchSendingService({
                 sendingService: {
-                    getBatchDelay() {
+                    getTargetDeliveryWindow() {
                         return 0;
                     }
                 }
@@ -735,16 +735,21 @@ describe('Batch Sending Service', function () {
             assert.equal(maxRunningCount, 2);
         });
 
-        it('Works with a batchDelay > 0', async function () {
+        it('Works with a target delivery window set', async function () {
+            // Set some parameters for sending the batches
+            const targetDeliveryWindow = 300000; // 5 minutes
+            const numBatches = 101;
+            const batchDelay = Math.floor(targetDeliveryWindow / numBatches);
             const service = new BatchSendingService({
                 sendingService: {
-                    getBatchDelay() {
-                        return 1000;
+                    getTargetDeliveryWindow() {
+                        return targetDeliveryWindow;
                     }
                 }
             });
             let runningCount = 0;
             let maxRunningCount = 0;
+            // Stub the sendBatch method to inspect the delivery times for each batch
             const sendBatch = sinon.stub(service, 'sendBatch').callsFake(async () => {
                 runningCount += 1;
                 maxRunningCount = Math.max(maxRunningCount, runningCount);
@@ -752,20 +757,27 @@ describe('Batch Sending Service', function () {
                 runningCount -= 1;
                 return Promise.resolve(true);
             });
-            const batches = new Array(101).fill(0).map(() => createModel({}));
+            // Create the batches
+            const batches = new Array(numBatches).fill(0).map(() => createModel({}));
+            // Invoke the sendBatches method to send the batches
             await service.sendBatches({
                 email: createModel({}),
                 batches,
                 post: createModel({}),
                 newsletter: createModel({})
             });
-            sinon.assert.callCount(sendBatch, 101);
+            // Assert that the sendBatch method was called the correct number of times
+            sinon.assert.callCount(sendBatch, numBatches);
+            // Get the batches there were sent from the sendBatch method calls
             const sendBatches = sendBatch.getCalls().map(call => call.args[0].batch);
+            // Get the delivery times for each batch from the sendBatch method calls
             const deliveryTimes = sendBatch.getCalls().map(call => call.args[0].deliveryTime);
+            // Assert that the delivery times are correct
+            // We should see a delay of batchDelay between each batch
             deliveryTimes.forEach((time, i) => {
                 assert(time instanceof Date);
                 if (i > 0) {
-                    assert(time - deliveryTimes[i - 1] >= 1000);
+                    assert(time - deliveryTimes[i - 1] >= batchDelay);
                 }
             });
             assert.deepEqual(sendBatches, batches);
@@ -775,7 +787,7 @@ describe('Batch Sending Service', function () {
         it('Throws error if all batches fail', async function () {
             const service = new BatchSendingService({
                 sendingService: {
-                    getBatchDelay() {
+                    getTargetDeliveryWindow() {
                         return 0;
                     }
                 }
@@ -805,7 +817,7 @@ describe('Batch Sending Service', function () {
         it('Throws error if a single batch fails', async function () {
             const service = new BatchSendingService({
                 sendingService: {
-                    getBatchDelay() {
+                    getTargetDeliveryWindow() {
                         return 0;
                     }
                 }

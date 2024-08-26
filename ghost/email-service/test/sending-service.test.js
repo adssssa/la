@@ -392,16 +392,16 @@ describe('Sending service', function () {
         });
     });
 
-    describe('getBatchDelay', function () {
+    describe('getTargetDeliveryWindow', function () {
         it('returns the batch delay of the email provider', function () {
             const emailProvider = {
-                getBatchDelay: sinon.stub().returns(0)
+                getTargetDeliveryWindow: sinon.stub().returns(0)
             };
             const sendingService = new SendingService({
                 emailProvider
             });
-            assert.equal(sendingService.getBatchDelay(), 0);
-            sinon.assert.calledOnce(emailProvider.getBatchDelay);
+            assert.equal(sendingService.getTargetDeliveryWindow(), 0);
+            sinon.assert.calledOnce(emailProvider.getTargetDeliveryWindow);
         });
     });
 });
