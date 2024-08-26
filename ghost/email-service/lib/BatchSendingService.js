@@ -192,7 +192,10 @@ class BatchSendingService {
      * @throws {errors.EmailError} If one of the batches fails
      */
     async sendEmail(email) {
-        logging.info(`Sending email ${email.id}`);
+        const TARGET_DELIVERY_WINDOW = this.#sendingService.getTargetDeliveryWindow();
+        const startTime = Date.now();
+        const deadline = TARGET_DELIVERY_WINDOW > 0 ? new Date(startTime + TARGET_DELIVERY_WINDOW) : undefined;
+        logging.info(`Sending email ${email.id}${deadline ? ` with deadline ${deadline}` : ''}`);
 
         // Load required relations
         const newsletter = await this.retryDb(async () => {
@@ -210,7 +213,8 @@ class BatchSendingService {
         if (batches.length === 0) {
             batches = await this.createBatches({email, newsletter, post});
         }
-        await this.sendBatches({email, batches, post, newsletter});
+        logging.info(`Sending batches with deadline ${deadline}ms`);
+        await this.sendBatches({email, batches, post, newsletter, deadline});
     }
 
     /**
@@ -354,12 +358,11 @@ class BatchSendingService {
         return batch;
     }
 
-    async sendBatches({email, batches, post, newsletter}) {
-        logging.info(`Sending ${batches.length} batches for email ${email.id}`);
+    async sendBatches({email, batches, post, newsletter, deadline}) {
+        logging.info(`Sending ${batches.length} batches for email ${email.id}${deadline ? ` with deadline ${deadline}` : ''}`);
 
-        // Ghost will attempt to deliver emails evenly distributed over this window, specified in seconds
-        const TARGET_DELIVERY_WINDOW = this.#sendingService.getTargetDeliveryWindow();
-        const BATCH_DELAY = TARGET_DELIVERY_WINDOW > 0 ? TARGET_DELIVERY_WINDOW / batches.length : 0;
+        // Ghost will attempt to deliver emails evenly distributed over the time between now and the deadline
+        const BATCH_DELAY = deadline ? (deadline.getTime() - Date.now()) / batches.length : 0;
 
         // Reuse same HTML body if we send an email to the same segment
         const emailBodyCache = new EmailBodyCache();
@@ -376,9 +379,13 @@ class BatchSendingService {
             if (batch) {
                 let deliveryTime = undefined;
                 if (BATCH_DELAY > 0) {
+                    // Calculate the target delivery time for the batch
                     const index = batches.indexOf(batch);
-                    const deliveryDelay = Math.abs(index * BATCH_DELAY);
-                    deliveryTime = new Date(startTime.getTime() + deliveryDelay);
+                    const targetDeliveryDelay = Math.abs(index * BATCH_DELAY);
+                    const targetDeliveryTime = new Date(startTime.getTime() + targetDeliveryDelay);
+                    // If we're already past the deadline, we don't want to delay the delivery, so set the delivery time to the deadline
+                    // Mailgun accepts a delivery time in the past, which will send it immediately
+                    deliveryTime = targetDeliveryTime > deadline ? deadline : targetDeliveryTime;
                 }
                 if (await this.sendBatch({email, batch, post, newsletter, emailBodyCache, deliveryTime})) {
                     succeededCount += 1;
@@ -404,7 +411,7 @@ class BatchSendingService {
 
     /**
      *
-     * @param {{email: Email, batch: EmailBatch, post: Post, newsletter: Newsletter}} data
+     * @param {{email: Email, batch: EmailBatch, post: Post, newsletter: Newsletter, }} data
      * @returns {Promise<boolean>} True when succeeded, false when failed with an error
      */
     async sendBatch({email, batch: originalBatch, post, newsletter, emailBodyCache, deliveryTime}) {
@@ -456,7 +463,7 @@ class BatchSendingService {
                     deliveryTime,
                     emailBodyCache
                 });
-            }, {...this.#MAILGUN_API_RETRY_CONFIG, description: `Sending email batch ${originalBatch.id}`});
+            }, {...this.#MAILGUN_API_RETRY_CONFIG, description: `Sending email batch ${originalBatch.id} ${deliveryTime ? `with delivery time ${deliveryTime}` : ''}`});
             succeeded = true;
 
             await this.retryDb(
