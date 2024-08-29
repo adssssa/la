@@ -275,6 +275,41 @@ describe('Batch Sending Service', function () {
             const argument = sendBatches.firstCall.args[0];
             assert.equal(argument.batches, createdBatches);
         });
+
+        it('passes deadline to sendBatches if target delivery window is set', async function () {
+            const now = new Date();
+            const clock = sinon.useFakeTimers(now);
+            const EmailBatch = createModelClass({
+                findAll: []
+            });
+            const service = new BatchSendingService({
+                models: {EmailBatch},
+                sendingService: {
+                    getTargetDeliveryWindow() {
+                        return 300000;
+                    }
+                }
+            });
+            const email = createModel({
+                status: 'submitting',
+                newsletter: createModel({}),
+                post: createModel({})
+            });
+
+            const sendBatches = sinon.stub(service, 'sendBatches').resolves();
+            const createdBatches = [createModel({})];
+            const createBatches = sinon.stub(service, 'createBatches').resolves(createdBatches);
+            const result = await service.sendEmail(email);
+            assert.equal(result, undefined);
+            sinon.assert.calledOnce(sendBatches);
+            sinon.assert.calledOnce(createBatches);
+
+            // Check called with created batch
+            const argument = sendBatches.firstCall.args[0];
+            assert.equal(argument.batches, createdBatches);
+            assert.equal(argument.deadline.getTime(), now.getTime() + 300000);
+            clock.restore();
+        });
     });
 
     describe('createBatches', function () {
