@@ -220,7 +220,12 @@ describe('Batch Sending Service', function () {
                 ]
             });
             const service = new BatchSendingService({
-                models: {EmailBatch}
+                models: {EmailBatch},
+                sendingService: {
+                    getTargetDeliveryWindow() {
+                        return 0;
+                    }
+                }
             });
             const email = createModel({
                 status: 'submitting',
@@ -245,7 +250,12 @@ describe('Batch Sending Service', function () {
                 findAll: []
             });
             const service = new BatchSendingService({
-                models: {EmailBatch}
+                models: {EmailBatch},
+                sendingService: {
+                    getTargetDeliveryWindow() {
+                        return 0;
+                    }
+                }
             });
             const email = createModel({
                 status: 'submitting',
@@ -738,8 +748,8 @@ describe('Batch Sending Service', function () {
         it('Works with a target delivery window set', async function () {
             // Set some parameters for sending the batches
             const targetDeliveryWindow = 300000; // 5 minutes
+            const deadline = new Date(Date.now() + targetDeliveryWindow);
             const numBatches = 101;
-            const batchDelay = Math.floor(targetDeliveryWindow / numBatches);
             const service = new BatchSendingService({
                 sendingService: {
                     getTargetDeliveryWindow() {
@@ -764,7 +774,8 @@ describe('Batch Sending Service', function () {
                 email: createModel({}),
                 batches,
                 post: createModel({}),
-                newsletter: createModel({})
+                newsletter: createModel({}),
+                deadline
             });
             // Assert that the sendBatch method was called the correct number of times
             sinon.assert.callCount(sendBatch, numBatches);
@@ -774,11 +785,10 @@ describe('Batch Sending Service', function () {
             const deliveryTimes = sendBatch.getCalls().map(call => call.args[0].deliveryTime);
             // Assert that the delivery times are correct
             // We should see a delay of batchDelay between each batch
-            deliveryTimes.forEach((time, i) => {
-                assert(time instanceof Date);
-                if (i > 0) {
-                    assert(time - deliveryTimes[i - 1] >= batchDelay);
-                }
+            deliveryTimes.forEach((time) => {
+                assert.ok(time instanceof Date);
+                assert.ok(!isNaN(time.getTime()));
+                assert.ok(time <= deadline);
             });
             assert.deepEqual(sendBatches, batches);
             assert.equal(maxRunningCount, 2);

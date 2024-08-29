@@ -361,9 +361,6 @@ class BatchSendingService {
     async sendBatches({email, batches, post, newsletter, deadline}) {
         logging.info(`Sending ${batches.length} batches for email ${email.id}${deadline ? ` with deadline ${deadline}` : ''}`);
 
-        // Ghost will attempt to deliver emails evenly distributed over the time between now and the deadline
-        const BATCH_DELAY = deadline ? (deadline.getTime() - Date.now()) / batches.length : 0;
-
         // Reuse same HTML body if we send an email to the same segment
         const emailBodyCache = new EmailBodyCache();
 
@@ -373,21 +370,19 @@ class BatchSendingService {
 
         // Bind this
         let runNext;
-        let startTime = new Date();
         runNext = async () => {
             const batch = queue.shift();
             if (batch) {
-                let deliveryTime = undefined;
-                if (BATCH_DELAY > 0) {
+                const batchData = {email, batch, post, newsletter, emailBodyCache};
+                // Only set a delivery time if we have a deadline and it hasn't past yet
+                if (deadline && deadline.getTime() > Date.now()) {
                     // Calculate the target delivery time for the batch
-                    const index = batches.indexOf(batch);
-                    const targetDeliveryDelay = Math.abs(index * BATCH_DELAY);
-                    const targetDeliveryTime = new Date(startTime.getTime() + targetDeliveryDelay);
-                    // If we're already past the deadline, we don't want to delay the delivery, so set the delivery time to the deadline
-                    // Mailgun accepts a delivery time in the past, which will send it immediately
-                    deliveryTime = targetDeliveryTime > deadline ? deadline : targetDeliveryTime;
+                    const timeRemaining = deadline.getTime() - Date.now();
+                    const targetDeliveryDelay = Math.abs(timeRemaining / (queue.length + 1));
+                    const targetDeliveryTime = new Date(Date.now() + targetDeliveryDelay);
+                    batchData.deliveryTime = targetDeliveryTime > deadline ? deadline : targetDeliveryTime;
                 }
-                if (await this.sendBatch({email, batch, post, newsletter, emailBodyCache, deliveryTime})) {
+                if (await this.sendBatch(batchData)) {
                     succeededCount += 1;
                 }
                 await runNext();
