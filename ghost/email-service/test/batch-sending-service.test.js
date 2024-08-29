@@ -819,11 +819,56 @@ describe('Batch Sending Service', function () {
             // Get the delivery times for each batch from the sendBatch method calls
             const deliveryTimes = sendBatch.getCalls().map(call => call.args[0].deliveryTime);
             // Assert that the delivery times are correct
-            // We should see a delay of batchDelay between each batch
             deliveryTimes.forEach((time) => {
                 assert.ok(time instanceof Date);
                 assert.ok(!isNaN(time.getTime()));
                 assert.ok(time <= deadline);
+            });
+            assert.deepEqual(sendBatches, batches);
+            assert.equal(maxRunningCount, 2);
+        });
+
+        it('omits deliverytime if deadline is in the past', async function () {
+            // Set some parameters for sending the batches
+            const targetDeliveryWindow = 300000; // 5 minutes
+            const deadline = new Date(Date.now() - (targetDeliveryWindow * 5));
+            const numBatches = 101;
+            const service = new BatchSendingService({
+                sendingService: {
+                    getTargetDeliveryWindow() {
+                        return targetDeliveryWindow;
+                    }
+                }
+            });
+            let runningCount = 0;
+            let maxRunningCount = 0;
+            // Stub the sendBatch method to inspect the delivery times for each batch
+            const sendBatch = sinon.stub(service, 'sendBatch').callsFake(async () => {
+                runningCount += 1;
+                maxRunningCount = Math.max(maxRunningCount, runningCount);
+                await sleep(5);
+                runningCount -= 1;
+                return Promise.resolve(true);
+            });
+            // Create the batches
+            const batches = new Array(numBatches).fill(0).map(() => createModel({}));
+            // Invoke the sendBatches method to send the batches
+            await service.sendBatches({
+                email: createModel({}),
+                batches,
+                post: createModel({}),
+                newsletter: createModel({}),
+                deadline
+            });
+            // Assert that the sendBatch method was called the correct number of times
+            sinon.assert.callCount(sendBatch, numBatches);
+            // Get the batches there were sent from the sendBatch method calls
+            const sendBatches = sendBatch.getCalls().map(call => call.args[0].batch);
+            // Get the delivery times for each batch from the sendBatch method calls
+            const deliveryTimes = sendBatch.getCalls().map(call => call.args[0].deliveryTime);
+            // Assert that the deliverytime is not set, since we're past the deadline
+            deliveryTimes.forEach((time) => {
+                assert.equal(time, undefined);
             });
             assert.deepEqual(sendBatches, batches);
             assert.equal(maxRunningCount, 2);
@@ -995,6 +1040,50 @@ describe('Batch Sending Service', function () {
 
             const {members} = sendingService.send.firstCall.args[0];
             assert.equal(members.length, 2);
+        });
+
+        it('Does send with a deliverytime', async function () {
+            const EmailBatch = createModelClass({
+                findOne: {
+                    status: 'pending',
+                    member_segment: null
+                }
+            });
+            const sendingService = {
+                send: sinon.stub().resolves({id: 'providerid@example.com'}),
+                getMaximumRecipients: () => 5
+            };
+
+            const findOne = sinon.spy(EmailBatch, 'findOne');
+            const service = new BatchSendingService({
+                models: {EmailBatch, EmailRecipient},
+                sendingService
+            });
+
+            const inputDeliveryTime = new Date(Date.now() + 10000);
+
+            const result = await service.sendBatch({
+                email: createModel({}),
+                batch: createModel({}),
+                post: createModel({}),
+                newsletter: createModel({}),
+                deliveryTime: inputDeliveryTime
+            });
+
+            assert.equal(result, true);
+            sinon.assert.notCalled(errorLog);
+            sinon.assert.calledOnce(sendingService.send);
+
+            sinon.assert.calledOnce(findOne);
+            const batch = await findOne.firstCall.returnValue;
+            assert.equal(batch.get('status'), 'submitted');
+            assert.equal(batch.get('provider_id'), 'providerid@example.com');
+
+            const {members} = sendingService.send.firstCall.args[0];
+            assert.equal(members.length, 2);
+
+            const {deliveryTime: outputDeliveryTime} = sendingService.send.firstCall.args[1];
+            assert.equal(inputDeliveryTime, outputDeliveryTime);
         });
 
         it('Does save error', async function () {

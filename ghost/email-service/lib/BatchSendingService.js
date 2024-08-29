@@ -380,7 +380,7 @@ class BatchSendingService {
                     const timeRemaining = deadline.getTime() - Date.now();
                     const targetDeliveryDelay = Math.abs(timeRemaining / (queue.length + 1));
                     const targetDeliveryTime = new Date(Date.now() + targetDeliveryDelay);
-                    batchData.deliveryTime = targetDeliveryTime > deadline ? deadline : targetDeliveryTime;
+                    batchData.deliveryTime = targetDeliveryTime;
                 }
                 if (await this.sendBatch(batchData)) {
                     succeededCount += 1;
