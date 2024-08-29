@@ -380,7 +380,7 @@ class BatchSendingService {
                     // Calculate the target delivery time for the batch
                     const timeRemaining = deadline.getTime() - lastDeliveryTime.getTime();
                     const targetDeliveryDelay = Math.abs(timeRemaining / (queue.length + 1));
-                    const targetDeliveryTime = new Date(lastDeliveryTime.getTime() + targetDeliveryDelay);
+                    const targetDeliveryTime = new Date(Math.min(lastDeliveryTime.getTime() + targetDeliveryDelay, deadline.getTime()));
                     batchData.deliveryTime = targetDeliveryTime;
                     lastDeliveryTime = targetDeliveryTime;
                 }
