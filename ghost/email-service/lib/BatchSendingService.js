@@ -370,6 +370,7 @@ class BatchSendingService {
 
         // Bind this
         let runNext;
+        let lastDeliveryTime = new Date();
         runNext = async () => {
             const batch = queue.shift();
             if (batch) {
@@ -377,10 +378,11 @@ class BatchSendingService {
                 // Only set a delivery time if we have a deadline and it hasn't past yet
                 if (deadline && deadline.getTime() > Date.now()) {
                     // Calculate the target delivery time for the batch
-                    const timeRemaining = deadline.getTime() - Date.now();
+                    const timeRemaining = deadline.getTime() - lastDeliveryTime.getTime();
                     const targetDeliveryDelay = Math.abs(timeRemaining / (queue.length + 1));
-                    const targetDeliveryTime = new Date(Date.now() + targetDeliveryDelay);
+                    const targetDeliveryTime = new Date(lastDeliveryTime.getTime() + targetDeliveryDelay);
                     batchData.deliveryTime = targetDeliveryTime;
+                    lastDeliveryTime = targetDeliveryTime;
                 }
                 if (await this.sendBatch(batchData)) {
                     succeededCount += 1;

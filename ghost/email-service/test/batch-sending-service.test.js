@@ -785,6 +785,7 @@ describe('Batch Sending Service', function () {
             const targetDeliveryWindow = 300000; // 5 minutes
             const deadline = new Date(Date.now() + targetDeliveryWindow);
             const numBatches = 101;
+            const expectedBatchDelay = targetDeliveryWindow / numBatches;
             const service = new BatchSendingService({
                 sendingService: {
                     getTargetDeliveryWindow() {
@@ -818,11 +819,24 @@ describe('Batch Sending Service', function () {
             const sendBatches = sendBatch.getCalls().map(call => call.args[0].batch);
             // Get the delivery times for each batch from the sendBatch method calls
             const deliveryTimes = sendBatch.getCalls().map(call => call.args[0].deliveryTime);
-            // Assert that the delivery times are correct
+
+            // Make sure all delivery times are valid dates, and are before the deadline
             deliveryTimes.forEach((time) => {
                 assert.ok(time instanceof Date);
                 assert.ok(!isNaN(time.getTime()));
                 assert.ok(time <= deadline);
+            });
+            // Make sure the delivery times are evenly spaced out, within a reasonable range
+            // Sort the delivery times in ascending order (just in case they're not in order)
+            deliveryTimes.sort((a, b) => a.getTime() - b.getTime());
+            const differences = [];
+            for (let i = 1; i < deliveryTimes.length; i++) {
+                differences.push(deliveryTimes[i].getTime() - deliveryTimes[i - 1].getTime());
+            }
+            // Make sure the differences are within a few ms of the expected batch delay
+            differences.forEach((difference) => {
+                assert.ok(difference >= expectedBatchDelay - 100, `Difference ${difference} is less than expected ${expectedBatchDelay}`);
+                assert.ok(difference <= expectedBatchDelay + 100, `Difference ${difference} is greater than expected ${expectedBatchDelay}`);
             });
             assert.deepEqual(sendBatches, batches);
             assert.equal(maxRunningCount, 2);
