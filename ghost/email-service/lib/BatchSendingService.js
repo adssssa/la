@@ -359,7 +359,6 @@ class BatchSendingService {
         const deadline = this.getDeliveryDeadline(email);
         
         if (deadline) {
-            console.log('Deadline', deadline);
             logging.info(`Delivery deadline for email ${email.id} is ${deadline}`);
         }
         // Reuse same HTML body if we send an email to the same segment
@@ -367,7 +366,6 @@ class BatchSendingService {
 
         // Calculate deliverytimes for the batches
         const deliveryTimes = this.calculateDeliveryTimes(email, batches.length);
-        console.log('deliveryTimes', deliveryTimes);
 
         // Loop batches and send them via the EmailProvider
         let succeededCount = 0;
