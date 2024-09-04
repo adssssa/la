@@ -192,10 +192,7 @@ class BatchSendingService {
      * @throws {errors.EmailError} If one of the batches fails
      */
     async sendEmail(email) {
-        const TARGET_DELIVERY_WINDOW = this.#sendingService.getTargetDeliveryWindow();
-        const startTime = Date.now();
-        const deadline = TARGET_DELIVERY_WINDOW > 0 ? new Date(startTime + TARGET_DELIVERY_WINDOW) : undefined;
-        logging.info(`Sending email ${email.id}${deadline ? ` with deadline ${deadline}` : ''}`);
+        logging.info(`Sending email ${email.id}`);
 
         // Load required relations
         const newsletter = await this.retryDb(async () => {
@@ -213,8 +210,7 @@ class BatchSendingService {
         if (batches.length === 0) {
             batches = await this.createBatches({email, newsletter, post});
         }
-        logging.info(`Sending batches with deadline ${deadline}ms`);
-        await this.sendBatches({email, batches, post, newsletter, deadline});
+        await this.sendBatches({email, batches, post, newsletter});
     }
 
     /**
@@ -358,11 +354,20 @@ class BatchSendingService {
         return batch;
     }
 
-    async sendBatches({email, batches, post, newsletter, deadline}) {
-        logging.info(`Sending ${batches.length} batches for email ${email.id}${deadline ? ` with deadline ${deadline}` : ''}`);
-
+    async sendBatches({email, batches, post, newsletter}) {
+        logging.info(`Sending ${batches.length} batches for email ${email.id}`);
+        const deadline = this.getDeliveryDeadline(email);
+        
+        if (deadline) {
+            console.log('Deadline', deadline);
+            logging.info(`Delivery deadline for email ${email.id} is ${deadline}`);
+        }
         // Reuse same HTML body if we send an email to the same segment
         const emailBodyCache = new EmailBodyCache();
+
+        // Calculate deliverytimes for the batches
+        const deliveryTimes = this.calculateDeliveryTimes(email, batches.length);
+        console.log('deliveryTimes', deliveryTimes);
 
         // Loop batches and send them via the EmailProvider
         let succeededCount = 0;
@@ -370,20 +375,16 @@ class BatchSendingService {
 
         // Bind this
         let runNext;
-        let lastDeliveryTime = new Date();
         runNext = async () => {
             const batch = queue.shift();
             if (batch) {
-                const batchData = {email, batch, post, newsletter, emailBodyCache};
+                const batchData = {email, batch, post, newsletter, emailBodyCache, deliveryTime: undefined};
                 // Only set a delivery time if we have a deadline and it hasn't past yet
                 if (deadline && deadline.getTime() > Date.now()) {
-                    // Calculate the target delivery time for the batch
-                    const timeRemaining = deadline.getTime() - lastDeliveryTime.getTime();
-                    const targetDeliveryDelay = Math.abs(timeRemaining / (queue.length + 1));
-                    const calculatedDeliveryTime = lastDeliveryTime.getTime() + targetDeliveryDelay;
-                    const targetDeliveryTime = new Date(Math.min(calculatedDeliveryTime, deadline.getTime()));
-                    batchData.deliveryTime = targetDeliveryTime;
-                    lastDeliveryTime = targetDeliveryTime;
+                    const deliveryTime = deliveryTimes.shift();
+                    if (deliveryTime && deliveryTime >= Date.now()) {
+                        batchData.deliveryTime = deliveryTime;
+                    }
                 }
                 if (await this.sendBatch(batchData)) {
                     succeededCount += 1;
@@ -409,7 +410,7 @@ class BatchSendingService {
 
     /**
      *
-     * @param {{email: Email, batch: EmailBatch, post: Post, newsletter: Newsletter, }} data
+     * @param {{email: Email, batch: EmailBatch, post: Post, newsletter: Newsletter, emailBodyCache: EmailBodyCache, deliveryTime:(Date|undefined) }} data
      * @returns {Promise<boolean>} True when succeeded, false when failed with an error
      */
     async sendBatch({email, batch: originalBatch, post, newsletter, emailBodyCache, deliveryTime}) {
@@ -652,6 +653,47 @@ class BatchSendingService {
                 });
             }
             return await this.retryDb(func, {...options, retryCount: retryCount + 1, sleep: sleep * 2});
+        }
+    }
+
+    /**
+     * Returns the sending deadline for an email
+     * Based on the email.created_at timestamp and the configured target delivery window
+     * @param {*} email 
+     * @returns Date | undefined
+     */
+    getDeliveryDeadline(email) {
+        const targetDeliveryWindow = this.#sendingService.getTargetDeliveryWindow();
+        if (targetDeliveryWindow === undefined || targetDeliveryWindow <= 0) {
+            return undefined;
+        }
+        const startTime = email.get('created_at');
+        // Return undefined if targetDeliveryWindow is 0 (or less)
+        const deadline = new Date(startTime.getTime() + targetDeliveryWindow);
+        return deadline;
+    }
+
+    /**
+     * Adds deliverytimes to the passed in batches, based on the delivery deadline
+     * @param {Email} email - the email model to be sent
+     * @param {number} numBatches - the number of batches to be sent
+     */
+    calculateDeliveryTimes(email, numBatches) {
+        const deadline = this.getDeliveryDeadline(email);
+        const now = new Date();
+        // If there is no deadline (target delivery window is not set) or the deadline is in the past, delivery immediately
+        if (!deadline || now >= deadline) {
+            return new Array(numBatches).fill(undefined);
+        } else {
+            const timeToDeadline = deadline.getTime() - now.getTime();
+            const batchDelay = timeToDeadline / numBatches;
+            const deliveryTimes = [];
+            for (let i = 0; i < numBatches; i++) {
+                const delay = batchDelay * i;
+                const deliveryTime = new Date(now.getTime() + delay);
+                deliveryTimes.push(deliveryTime);
+            }
+            return deliveryTimes;
         }
     }
 }
